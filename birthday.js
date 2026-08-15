@@ -67,16 +67,175 @@ const barBot  = $('barBot');
 const uline   = $('uline').querySelector('.uline__path');
 const bloom   = $('bloom');
 const replay  = $('replay');
+const soundToggle = $('soundToggle');
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isRecord     = new URLSearchParams(location.search).has('record');
 
 /* --- cue log for the recorder: the page stays muted, but it timestamps every
    beat the film crosses, and the offline sound synth fires foley at those exact
-   times so the audio can never drift from the picture. --- */
+   times so the audio can never drift from the picture. The same beats also
+   drive the LIVE, in-page score below (playCue), so both are keyed off one
+   source of truth. --- */
 if (isRecord) window.bdayCues = [];
 let recT0 = 0;
-function cue(name){ if (isRecord && recT0) window.bdayCues.push({ cue: name, t: (performance.now() - recT0) / 1000 }); }
+function cue(name){
+  if (isRecord && recT0) window.bdayCues.push({ cue: name, t: (performance.now() - recT0) / 1000 });
+  playCue(name);
+}
+
+/* ============================================================
+   SOUND — a tiny procedural score, synthesized with Web Audio.
+   No audio files: every note is an oscillator/noise burst shaped
+   by a gain envelope. On by default; the visitor can mute via the
+   toggle. The AudioContext is created up front but browsers start
+   it suspended until a real user gesture — the bow's own draw
+   (pointerdown/keydown on .archery) is that gesture, so it's
+   resumed there, right as the score is about to be needed.
+   ============================================================ */
+let actx = null, master = null, soundOn = !isRecord, lastTwinkleSfx = 0;
+
+function ensureAudio(){
+  if (actx) return actx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  actx = new AC();
+  master = actx.createGain();
+  master.gain.value = 0.5;
+  master.connect(actx.destination);
+  return actx;
+}
+function resumeAudio(){
+  if (!soundOn) return;
+  ensureAudio();
+  if (actx && actx.state === 'suspended') actx.resume();
+}
+ensureAudio();
+
+/* a short rising tone — the string coming taut (keyboard auto-draw) */
+function sfxDraw(){
+  const t = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(180, t);
+  o.frequency.linearRampToValueAtTime(300, t + 0.55);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(0.12, t + 0.12);
+  g.gain.linearRampToValueAtTime(0.0001, t + 0.6);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + 0.62);
+}
+
+/* a soft pluck — the bowstring's release */
+function sfxPluck(){
+  const t = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'triangle';
+  o.frequency.setValueAtTime(360, t);
+  o.frequency.exponentialRampToValueAtTime(140, t + 0.22);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.5, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + 0.34);
+}
+
+/* filtered noise, sweeping up — the arrow's whoosh */
+function sfxWhoosh(){
+  const t = actx.currentTime, dur = 0.4;
+  const buf = actx.createBuffer(1, actx.sampleRate * dur, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const src = actx.createBufferSource(); src.buffer = buf;
+  const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 0.9;
+  bp.frequency.setValueAtTime(700, t);
+  bp.frequency.exponentialRampToValueAtTime(2600, t + dur * 0.9);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(bp); bp.connect(g); g.connect(master);
+  src.start(t); src.stop(t + dur);
+}
+
+/* a bright two-partial bell — hits, wishes, twinkles */
+function sfxBell(freq, delay = 0, vol = 0.3, dur = 1.1){
+  const t = actx.currentTime + delay;
+  const o1 = actx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq;
+  const o2 = actx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq * 2.01;
+  const g  = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  const g2 = actx.createGain(); g2.gain.value = 0.22;
+  o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(master);
+  o1.start(t); o2.start(t); o1.stop(t + dur); o2.stop(t + dur);
+}
+
+/* a soft low thump — the heart taking the hit */
+function sfxThump(){
+  const t = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(150, t);
+  o.frequency.exponentialRampToValueAtTime(46, t + 0.22);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.55, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + 0.32);
+}
+
+/* a warm rising swell — the rose flood covering the frame, the gold bloom */
+function sfxSwell(dur = 1.2, vol = 0.3){
+  const t = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(90, t);
+  o.frequency.exponentialRampToValueAtTime(220, t + dur);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.6);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + dur);
+}
+
+/* one entry point per narrative beat, keyed to the same names cue() logs */
+const SCORE = {
+  draw()    { sfxDraw(); },
+  release() { sfxPluck(); },
+  whoosh()  { sfxWhoosh(); },
+  hit()     { sfxThump(); sfxBell(880, 0.04, 0.26, 0.9); },
+  flood()   { sfxSwell(1.0, 0.26); },
+  wish()    { sfxBell(659.25, 0, 0.28, 1.0); },   // E5
+  wish2()   { sfxBell(880.00, 0, 0.28, 1.1); },   // A5
+  bloom()   { sfxSwell(1.4, 0.3); sfxBell(1318.5, 0.5, 0.2, 1.6); },
+  grow()    { sfxBell(523.25, 0, 0.16, 1.4); },
+};
+function playCue(name){
+  if (!soundOn || !actx) return;
+  const fn = SCORE[name];
+  if (fn) fn();
+}
+
+/* a very soft, throttled sparkle — tied to the tree's own twinkle spawns */
+function playTwinkleSfx(){
+  if (!soundOn || !actx) return;
+  const t = performance.now();
+  if (t - lastTwinkleSfx < 260) return;
+  lastTwinkleSfx = t;
+  sfxBell(1500 + Math.random() * 700, 0, 0.06, 0.5);
+}
+
+if (isRecord){
+  soundToggle.hidden = true;                     // the recorder scores itself
+} else {
+  soundToggle.addEventListener('click', () => {
+    soundOn = !soundOn;
+    soundToggle.setAttribute('aria-pressed', String(soundOn));
+    soundToggle.setAttribute('aria-label', soundOn ? 'Turn off sound' : 'Turn on sound');
+    if (soundOn){
+      resumeAudio();
+      sfxBell(784, 0, 0.16, 0.5);                 // a tiny confirmation chime
+    }
+  });
+}
 
 /* ============================================================
    MATH HELPERS
@@ -439,7 +598,10 @@ function updateTwinkles(t, dt){
   const active = t > T.bloomT0 + T.bloomSpan * 0.45;
   if (active && twinkles.length < 9 && Math.random() < 0.5){
     const h = hearts[(Math.random() * hearts.length) | 0];
-    if (h) twinkles.push({ x: h.x, y: h.y, size: rand(0.6, 1.3) * (Math.min(W, H) * 0.05), age: 0, life: rand(0.7, 1.2), rot: rand(0, 6.28) });
+    if (h){
+      twinkles.push({ x: h.x, y: h.y, size: rand(0.6, 1.3) * (Math.min(W, H) * 0.05), age: 0, life: rand(0.7, 1.2), rot: rand(0, 6.28) });
+      playTwinkleSfx();
+    }
   }
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
   for (let i = twinkles.length - 1; i >= 0; i--){
@@ -816,6 +978,7 @@ function springBack(){
 
 function autoFire(){
   if (played) return;
+  resumeAudio();
   recT0 = performance.now(); cue('draw');       // t=0 of the soundtrack
   gsap.to({ d: curDraw }, {
     d: maxDraw * 0.94, duration: 0.62, ease: 'power2.inOut',
@@ -829,6 +992,8 @@ archery.addEventListener('pointerdown', (e) => {
   drawing = true;
   try { archery.setPointerCapture(e.pointerId); } catch (_) {}
   startPX = e.clientX; startPY = e.clientY; startDraw = curDraw;
+  resumeAudio();
+  playCue('draw');
   e.preventDefault();
 });
 archery.addEventListener('pointermove', (e) => {
