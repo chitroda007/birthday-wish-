@@ -87,11 +87,13 @@ function cue(name){
 /* ============================================================
    SOUND — a tiny procedural score, synthesized with Web Audio.
    No audio files: every note is an oscillator/noise burst shaped
-   by a gain envelope. Muted by default; the visitor opts in via
-   the sound toggle, which also satisfies the browser's
-   user-gesture requirement for starting audio.
+   by a gain envelope. On by default; the visitor can mute via the
+   toggle. The AudioContext is created up front but browsers start
+   it suspended until a real user gesture — the bow's own draw
+   (pointerdown/keydown on .archery) is that gesture, so it's
+   resumed there, right as the score is about to be needed.
    ============================================================ */
-let actx = null, master = null, soundOn = false, lastTwinkleSfx = 0;
+let actx = null, master = null, soundOn = !isRecord, lastTwinkleSfx = 0;
 
 function ensureAudio(){
   if (actx) return actx;
@@ -103,6 +105,12 @@ function ensureAudio(){
   master.connect(actx.destination);
   return actx;
 }
+function resumeAudio(){
+  if (!soundOn) return;
+  ensureAudio();
+  if (actx && actx.state === 'suspended') actx.resume();
+}
+ensureAudio();
 
 /* a short rising tone — the string coming taut (keyboard auto-draw) */
 function sfxDraw(){
@@ -223,8 +231,7 @@ if (isRecord){
     soundToggle.setAttribute('aria-pressed', String(soundOn));
     soundToggle.setAttribute('aria-label', soundOn ? 'Turn off sound' : 'Turn on sound');
     if (soundOn){
-      ensureAudio();
-      if (actx.state === 'suspended') actx.resume();
+      resumeAudio();
       sfxBell(784, 0, 0.16, 0.5);                 // a tiny confirmation chime
     }
   });
@@ -971,6 +978,7 @@ function springBack(){
 
 function autoFire(){
   if (played) return;
+  resumeAudio();
   recT0 = performance.now(); cue('draw');       // t=0 of the soundtrack
   gsap.to({ d: curDraw }, {
     d: maxDraw * 0.94, duration: 0.62, ease: 'power2.inOut',
@@ -984,6 +992,7 @@ archery.addEventListener('pointerdown', (e) => {
   drawing = true;
   try { archery.setPointerCapture(e.pointerId); } catch (_) {}
   startPX = e.clientX; startPY = e.clientY; startDraw = curDraw;
+  resumeAudio();
   playCue('draw');
   e.preventDefault();
 });
