@@ -203,6 +203,20 @@
       <p class="wish__sub" id="wSub">here&rsquo;s to a year that blooms</p>
     </div>
 
+    <!-- Toggle the film's score — a tiny synthesized soundtrack, opt-in and
+         muted by default. Visible through the whole film, not just at the end. -->
+    <button class="soundToggle" id="soundToggle" type="button" aria-pressed="false" aria-label="Turn on sound">
+      <svg class="soundToggle__icon soundToggle__icon--off" viewBox="0 0 24 24" aria-hidden="true" width="15" height="15">
+        <path d="M4 9v6h4l5 5V4L8 9H4Z" fill="currentColor" />
+        <path d="M15.6 15.4 20.4 20.2M20.4 15.4 15.6 20.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+      </svg>
+      <svg class="soundToggle__icon soundToggle__icon--on" viewBox="0 0 24 24" aria-hidden="true" width="15" height="15">
+        <path d="M4 9v6h4l5 5V4L8 9H4Z" fill="currentColor" />
+        <path d="M16.2 8.6a5 5 0 0 1 0 6.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" />
+        <path d="M18.7 6a8.6 8.6 0 0 1 0 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" />
+      </svg>
+    </button>
+
     <!-- Play the film again once it has settled. -->
     <button class="replay" id="replay" type="button" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true" width="15" height="15">

@@ -421,6 +421,27 @@ body{
 @keyframes twk{ 0%,100%{ opacity:0; transform:scale(.5) rotate(-12deg); } 45%{ opacity:1; transform:scale(1.05) rotate(16deg); } }
 
 /* ============================================================
+   SOUND TOGGLE — a tiny synthesized score, opt-in
+   ============================================================ */
+.soundToggle{
+  position:absolute; right:18px; top:18px; z-index:10;
+  width:36px; height:36px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center;
+  color:#8a4a5a; background:rgba(255,248,242,.72);
+  border:1px solid rgba(150,60,80,.18);
+  box-shadow:0 6px 20px -8px rgba(120,20,50,.4);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  cursor:pointer; opacity:.82;
+  transition:opacity .3s ease, background .3s ease, transform .2s ease;
+}
+.soundToggle:hover{ opacity:1; background:rgba(255,252,248,.92); }
+.soundToggle:active{ transform:scale(.9); }
+.soundToggle__icon{ position:absolute; transition:opacity .25s ease; }
+.soundToggle__icon--on{ opacity:0; }
+.soundToggle[aria-pressed="true"] .soundToggle__icon--off{ opacity:0; }
+.soundToggle[aria-pressed="true"] .soundToggle__icon--on{ opacity:1; }
+
+/* ============================================================
    REPLAY
    ============================================================ */
 .replay{
